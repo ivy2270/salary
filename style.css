@@ -1,0 +1,133 @@
+body {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    background-color: #f4f7f6;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    margin: 0;
+    color: #333;
+}
+
+.container {
+    background-color: #ffffff;
+    padding: 30px;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    width: 100%;
+    max-width: 500px;
+    box-sizing: border-box;
+}
+
+h1 {
+    text-align: center;
+    color: #2c3e50;
+    margin-bottom: 25px;
+    font-size: 2em;
+}
+
+.input-group {
+    margin-bottom: 20px;
+}
+
+.input-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: bold;
+    color: #555;
+}
+
+.input-group input[type="number"] {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    box-sizing: border-box;
+    font-size: 1em;
+    transition: border-color 0.3s;
+    /* 新增：隱藏上下箭頭 */
+    -moz-appearance: textfield; /* Firefox */
+}
+
+/* 新增：隱藏上下箭頭 (Webkit browsers like Chrome, Safari) */
+.input-group input[type="number"]::-webkit-outer-spin-button,
+.input-group input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.input-group input[type="number"]:focus {
+    outline: none;
+    border-color: #007BFF;
+    box-shadow: 0 0 5px rgba(0, 123, 255, 0.2);
+}
+
+hr {
+    border: 0;
+    height: 1px;
+    background-color: #e0e0e0;
+    margin: 25px 0;
+}
+
+.button-group {
+    display: flex;
+    justify-content: space-between;
+    gap: 15px;
+    margin-top: 25px;
+}
+
+.button-group button {
+    flex: 1;
+    padding: 12px;
+    border: none;
+    border-radius: 8px;
+    font-size: 1.1em;
+    cursor: pointer;
+    transition: background-color 0.3s, transform 0.1s;
+    font-weight: bold;
+}
+
+#calculateBtn {
+    background-color: #007BFF;
+    color: white;
+}
+
+#clearBtn {
+    background-color: #6c757d;
+    color: white;
+}
+
+#calculateBtn:hover {
+    background-color: #0056b3;
+}
+
+#clearBtn:hover {
+    background-color: #5a6268;
+}
+
+#calculateBtn:active, #clearBtn:active {
+    transform: translateY(1px);
+}
+
+.result-area {
+    margin-top: 30px;
+    text-align: center;
+    background-color: #e9ecef;
+    padding: 20px;
+    border-radius: 8px;
+    font-size: 1.2em;
+    font-weight: bold;
+    color: #34495e;
+}
+
+.result-area p:first-child {
+    margin-top: 0;
+    margin-bottom: 5px;
+    color: #6c757d;
+}
+
+#totalAmount {
+    font-size: 2.2em;
+    color: #28a745;
+    margin: 0;
+}
