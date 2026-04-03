@@ -26,6 +26,40 @@
     .total-box { background: #263238 !important; color: white !important; border-radius: 12px; }
     .report-table th { background-color: #ECEFF1; font-weight: bold !important; white-space: nowrap; }
     .sticky-col { position: sticky; left: 0; background: white; z-index: 2; border-right: 1px solid #ddd; }
+
+    .income-table {
+      width: 100%; border-collapse: collapse; font-size: 13px;
+    }
+    .income-table th, .income-table td {
+      padding: 8px 12px; white-space: nowrap; border-bottom: 1px solid #ECEFF1;
+    }
+    .income-table thead th {
+      background: #455A64; color: white; font-weight: 600; text-align: right;
+    }
+    .income-table thead th.col-month {
+      text-align: center; position: sticky; left: 0; z-index: 3; background: #455A64;
+    }
+    .income-table .col-month {
+      text-align: center; font-weight: 600; color: #455A64;
+      position: sticky; left: 0; background: white; z-index: 1;
+      border-right: 2px solid #CFD8DC; min-width: 52px;
+    }
+    .income-table .col-data { text-align: right; min-width: 90px; color: #37474F; }
+    .income-table .col-total {
+      text-align: right; font-weight: 700; min-width: 90px;
+      background: #ECEFF1; color: #263238; border-left: 2px solid #CFD8DC;
+    }
+    .income-table .row-even { background: #F9FAFB; }
+    .income-table .row-even .col-month { background: #F9FAFB; }
+    .income-table tbody tr:hover { background: #E3F2FD !important; }
+    .income-table tbody tr:hover .col-month { background: #E3F2FD !important; }
+    .income-table tfoot .row-footer td {
+      background: #263238; color: white; font-weight: 700; border-top: 2px solid #455A64;
+    }
+    .income-table tfoot .row-footer .col-month {
+      background: #263238; color: white; position: sticky; left: 0; z-index: 1;
+    }
+    .income-table tfoot .row-footer .col-total { background: #1a2429; color: white; }
   </style>
 </head>
 <body>
@@ -106,30 +140,41 @@
                 <v-toolbar color="grey-lighten-4" density="compact">
                   <v-toolbar-title class="text-subtitle-1 font-weight-bold">年度盈收概覽</v-toolbar-title>
                   <v-spacer></v-spacer>
-                  <v-select v-model="reportYear" :items="availableYears" variant="plain" density="compact" hide-details style="max-width: 120px;"></v-select>
+                  <v-select v-model="reportYear" :items="availableYears" variant="plain" density="compact" hide-details style="max-width: 120px;" @update:modelValue="fetchReportData"></v-select>
                   <v-btn icon @click="fetchReportData"><v-icon>mdi-refresh</v-icon></v-btn>
                 </v-toolbar>
                 
-                <v-table density="compact" class="report-table">
-                  <thead>
-                    <tr>
-                      <th class="sticky-col">診所</th>
-                      <th v-for="m in 12" :key="m" class="text-center">{{ m }}月</th>
-                      <th>總計</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="(months, clinic) in yearlyReport" :key="clinic">
-                      <td class="sticky-col font-weight-medium">{{ clinic }}</td>
-                      <td v-for="m in 12" :key="m" class="text-right">
-                        {{ formatCurrency(months[String(m).padStart(2,'0')]) }}
-                      </td>
-                      <td class="text-right font-weight-bold bg-blue-grey-lighten-5">
-                        {{ formatCurrency(getClinicYearTotal(months)) }}
-                      </td>
-                    </tr>
-                  </tbody>
-                </v-table>
+                <div style="overflow-x: auto; -webkit-overflow-scrolling: touch;">
+                  <table class="income-table">
+                    <thead>
+                      <tr>
+                        <th class="col-month">月份</th>
+                        <th v-for="clinic in clinicOptions" :key="clinic" class="col-data">{{ clinic }}</th>
+                        <th class="col-total">當月加總</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="m in 12" :key="m" :class="m % 2 === 0 ? 'row-even' : ''">
+                        <td class="col-month">{{ m }}月</td>
+                        <td v-for="clinic in clinicOptions" :key="clinic" class="col-data">
+                          {{ yearlyReport[clinic] && yearlyReport[clinic][String(m).padStart(2,'0')] ? formatCurrency(yearlyReport[clinic][String(m).padStart(2,'0')]) : '' }}
+                        </td>
+                        <td class="col-total">
+                          {{ getMonthTotal(m) ? formatCurrency(getMonthTotal(m)) : '' }}
+                        </td>
+                      </tr>
+                    </tbody>
+                    <tfoot>
+                      <tr class="row-footer">
+                        <td class="col-month">年度加總</td>
+                        <td v-for="clinic in clinicOptions" :key="clinic" class="col-data">
+                          {{ yearlyReport[clinic] ? formatCurrency(getClinicYearTotal(yearlyReport[clinic])) : '' }}
+                        </td>
+                        <td class="col-total">{{ formatCurrency(getGrandTotal()) }}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
               </v-card>
 
               <v-card class="elevation-2" rounded="lg">
@@ -153,18 +198,18 @@
                     <div class="text-overline font-weight-bold" :class="cat === '薪資單' ? 'text-primary' : (cat === '技工費' ? 'text-teal' : 'text-orange')">
                       {{ cat }} 明細
                     </div>
-                    <v-list density="compact" class="bg-grey-lighten-4 rounded" v-if="queryResult[cat] && queryResult[cat].length > 0">
-                      <v-list-item v-for="(item, i) in queryResult[cat]" :key="i">
+                    <v-list density="compact" class="bg-grey-lighten-4 rounded" v-if="queryResult[cat] && queryResult[cat].items && queryResult[cat].items.length > 0">
+                      <v-list-item v-for="(item, i) in queryResult[cat].items" :key="i">
                         <div class="d-flex justify-space-between w-100">
                           <span class="text-body-2">{{ item.label }}</span>
-                          <span class="font-weight-medium">{{ formatCurrency(item.value) }}</span>
+                          <span class="font-weight-medium">{{ item.value != null ? formatCurrency(item.value) : '' }}</span>
                         </div>
                       </v-list-item>
                       <v-divider></v-divider>
                       <v-list-item>
                         <div class="d-flex justify-space-between w-100 font-weight-bold">
-                          <span>{{ cat }} 前端計算小計</span>
-                          <span class="text-decoration-underline">$ {{ calculateCatTotal(queryResult[cat]).toLocaleString() }}</span>
+                          <span>{{ cat }} 總計</span>
+                          <span>$ {{ formatCurrency(queryResult[cat].total) }}</span>
                         </div>
                       </v-list-item>
                     </v-list>
@@ -212,6 +257,7 @@
         const query = reactive({ clinic: '', date: new Date().toISOString().substr(0, 7) });
         const queryResult = ref(null);
 
+        // ★ 修正1：fetchSettings 完成後才呼叫 fetchReportData，確保年份正確
         const fetchSettings = async () => {
           try {
             const res = await fetch(GAS_URL, { method: "POST", body: JSON.stringify({ action: "getSettings" }) });
@@ -223,9 +269,15 @@
                 scannedData.clinic = clinicOptions.value[0];
                 query.clinic = clinicOptions.value[0];
               }
-              if (availableYears.value.length > 0) reportYear.value = availableYears.value[0];
+              if (availableYears.value.length > 0) {
+                reportYear.value = availableYears.value[0];
+              }
             }
-          } catch (e) { console.error("設定讀取失敗"); }
+          } catch (e) { 
+            console.error("設定讀取失敗", e); 
+          }
+          // 設定載入完畢後才抓報表，確保用正確的年份
+          await fetchReportData();
         };
 
         const startCamera = async () => {
@@ -252,7 +304,6 @@
             const result = await res.json();
             if (result.status === "success") {
               scannedData.items = [...scannedData.items, ...result.data.items];
-              // 薪資單自動更新手動總額初值供修改
               const sum = scannedData.items.reduce((s, i) => s + (Number(i.value) || 0), 0);
               if (scannedData.manualTotal === 0) scannedData.manualTotal = sum;
             } else { alert("辨識錯誤: " + result.message); }
@@ -277,35 +328,43 @@
 
         const fetchReportData = async () => {
           try {
+            console.log("fetchReportData 呼叫，year =", reportYear.value);
             const res = await fetch(GAS_URL, { method: "POST", body: JSON.stringify({ action: "getReport", year: reportYear.value }) });
             const result = await res.json();
+            console.log("getReport 回傳：", JSON.stringify(result));
             if (result.status === "success") yearlyReport.value = result.data;
-          } catch (e) { console.error("報表讀取失敗"); }
+          } catch (e) { console.error("報表讀取失敗", e); }
         };
 
         const fetchMonthlyDetail = async () => {
           queryLoading.value = true;
+          queryResult.value = null;
           try {
             const res = await fetch(GAS_URL, { method: "POST", body: JSON.stringify({ action: "getMonthlyDetail", date: query.date, clinic: query.clinic }) });
             const result = await res.json();
             if (result.status === "success") queryResult.value = result.data;
+            else alert("查詢錯誤: " + result.message);
           } catch (e) { alert("查詢失敗"); }
           queryLoading.value = false;
         };
 
-        const calculateCatTotal = (items) => {
-          if (!items) return 0;
-          return items.reduce((sum, i) => sum + (Number(i.value) || 0), 0);
+        const formatCurrency = (val) => {
+          if (val === undefined || val === null) return '';
+          return val.toLocaleString();
         };
-
-        const formatCurrency = (val) => (val !== undefined && val !== null) ? val.toLocaleString() : '-';
         const getClinicYearTotal = (months) => Object.values(months).reduce((a, b) => a + b, 0);
+        const getMonthTotal = (m) => {
+          const key = String(m).padStart(2, '0');
+          return Object.values(yearlyReport.value).reduce((sum, months) => sum + (months[key] || 0), 0);
+        };
+        const getGrandTotal = () => {
+          return Object.values(yearlyReport.value).reduce((sum, months) => sum + getClinicYearTotal(months), 0);
+        };
         const addItem = () => scannedData.items.push({ label: '手動輸入', value: 0 });
 
         onMounted(() => { 
-          fetchSettings(); 
+          fetchSettings();  // fetchSettings 內部會在完成後呼叫 fetchReportData
           startCamera(); 
-          fetchReportData();
         });
 
         watch(activeTab, (newTab) => {
@@ -317,7 +376,7 @@
           activeTab, videoRef, loading, saveLoading, queryLoading, scannedData, 
           captureAndScan, addItem, saveToGAS, 
           done, clinicOptions, reportYear, availableYears, yearlyReport, query, queryResult, 
-          fetchReportData, fetchMonthlyDetail, formatCurrency, getClinicYearTotal, calculateCatTotal
+          fetchReportData, fetchMonthlyDetail, formatCurrency, getClinicYearTotal, getMonthTotal, getGrandTotal
         };
       }
     }).use(createVuetify()).mount('#app');
