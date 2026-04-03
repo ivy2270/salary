@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>個人診所紀錄系統 v3.0</title>
+  <title>個人診所紀錄系統 v3.5</title>
   <link href="https://cdn.jsdelivr.net/npm/vuetify@3.4.1/dist/vuetify.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/@mdi/font@7.3.67/css/materialdesignicons.min.css" rel="stylesheet">
   <style>
@@ -38,7 +38,7 @@
           <v-tab value="view"><v-icon start>mdi-table</v-icon>年度查詢</v-tab>
         </v-tabs>
 
-        <v-window v-model="activeTab">
+        <v-window v-model="activeTab" touchless>
           <v-window-item value="scan">
             <v-container>
               <v-card class="mx-auto elevation-3" max-width="500" rounded="xl">
@@ -154,43 +154,45 @@
                 <v-divider v-if="queryResult"></v-divider>
                 
                 <v-card-text v-if="queryResult">
-                  <div class="mb-4">
+                  <div class="mb-4" v-if="queryResult.薪資單 && queryResult.薪資單.length > 0">
                     <div class="text-overline text-primary">薪資明細</div>
                     <v-list density="compact" class="bg-grey-lighten-4 rounded">
                       <v-list-item v-for="(item, i) in queryResult.薪資單" :key="i">
                         <div class="d-flex justify-space-between w-100">
                           <span class="text-body-2">{{ item.label }}</span>
-                          <span :class="item.value < 0 ? 'text-red' : 'text-green'">{{ item.value.toLocaleString() }}</span>
+                          <span :class="Number(item.value) < 0 ? 'text-red' : 'text-green'">{{ Number(item.value).toLocaleString() }}</span>
                         </div>
                       </v-list-item>
                     </v-list>
                   </div>
-                  <v-row dense>
+
+                  <v-row dense class="mb-4">
                     <v-col cols="6">
                       <div class="pa-3 bg-teal-lighten-5 rounded text-center">
                         <div class="text-caption">技工費總額</div>
-                        <div class="text-h6">${{ queryResult.技工費.toLocaleString() }}</div>
+                        <div class="text-h6">${{ (queryResult.技工費 || 0).toLocaleString() }}</div>
                       </div>
                     </v-col>
                     <v-col cols="6">
                       <div class="pa-3 bg-orange-lighten-5 rounded text-center">
                         <div class="text-caption">自費加總</div>
-                        <div class="text-h6">${{ queryResult.自費清單.toLocaleString() }}</div>
+                        <div class="text-h6">${{ (queryResult.自費清單 || 0).toLocaleString() }}</div>
                       </div>
                     </v-col>
                   </v-row>
+
+                  <div v-if="queryResult.其他細項 && queryResult.其他細項.length > 0">
+                    <div class="text-overline text-orange-darken-3">技工/自費 明細</div>
+                    <v-list density="compact" class="bg-orange-lighten-5 rounded">
+                      <v-list-item v-for="(item, i) in queryResult.其他細項" :key="'other-'+i">
+                        <div class="d-flex justify-space-between w-100">
+                          <span class="text-caption text-truncate mr-2">[{{ item.type }}] {{ item.label }}</span>
+                          <span class="text-body-2 font-weight-bold">{{ Number(item.value).toLocaleString() }}</span>
+                        </div>
+                      </v-list-item>
+                    </v-list>
+                  </div>
                 </v-card-text>
-                <div v-if="queryResult.其他細項 && queryResult.其他細項.length > 0" class="mt-4">
-  <div class="text-overline text-orange-darken-3">技工/自費 明細</div>
-  <v-list density="compact" class="bg-orange-lighten-5 rounded">
-    <v-list-item v-for="(item, i) in queryResult.其他細項" :key="'other-'+i">
-      <div class="d-flex justify-space-between w-100">
-        <span class="text-caption">[{{ item.type }}] {{ item.label }}</span>
-        <span class="text-body-2 font-weight-bold">{{ item.value.toLocaleString() }}</span>
-      </div>
-    </v-list-item>
-  </v-list>
-</div>
               </v-card>
             </v-container>
           </v-window-item>
@@ -227,18 +229,10 @@
           manualTotal: 0
         });
 
-        // 報表相關
         const reportYear = ref(new Date().getFullYear().toString());
         const yearlyReport = ref({});
         const query = reactive({ clinic: '', date: new Date().toISOString().substr(0, 7) });
         const queryResult = ref(null);
-
-        const calculateTotal = computed(() => scannedData.items.reduce((sum, item) => sum + (Number(item.value) || 0), 0));
-
-        // 當自動計算變動時，若為 0 則更新 manualTotal (僅作為初次引導)
-        watch(calculateTotal, (newVal) => {
-          if (scannedData.manualTotal === 0) scannedData.manualTotal = newVal;
-        });
 
         const fetchSettings = async () => {
           try {
@@ -251,17 +245,18 @@
                 query.clinic = clinicOptions.value[0];
               }
             }
-          } catch (e) { console.error("設定載入失敗"); }
+          } catch (e) { console.error("設定失敗"); }
         };
 
         const startCamera = async () => {
           try {
             const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
             if (videoRef.value) videoRef.value.srcObject = stream;
-          } catch (e) { alert("鏡頭啟動失敗"); }
+          } catch (e) { console.log("鏡頭啟動中..."); }
         };
 
         const captureAndScan = async () => {
+          if (!videoRef.value) return;
           loading.value = true;
           const canvas = document.createElement('canvas');
           canvas.width = videoRef.value.videoWidth;
@@ -277,17 +272,17 @@
             const result = await res.json();
             if (result.status === "success") {
               scannedData.items = [...scannedData.items, ...result.data.items];
-            } else { alert("辨識出錯：" + result.message); }
-          } catch (e) { alert("連線失敗"); }
+              // 自動更新手動總額初值
+              const sum = scannedData.items.reduce((s, i) => s + (Number(i.value) || 0), 0);
+              if (scannedData.manualTotal === 0) scannedData.manualTotal = sum;
+            } else { alert("辨識錯誤"); }
+          } catch (e) { alert("辨識連線失敗"); }
           loading.value = false;
         };
 
         const saveToGAS = async () => {
           saveLoading.value = true;
-          // 將手動輸入的總額覆蓋進 payload (由 GAS 存入總計欄位)
-          const payload = { ...scannedData, items: scannedData.items };
-          payload.total = scannedData.manualTotal; 
-
+          const payload = { ...scannedData, total: scannedData.manualTotal }; 
           try {
             const res = await fetch(GAS_URL, { method: "POST", body: JSON.stringify({ action: "save", payload: payload }) });
             const result = await res.json();
@@ -300,13 +295,12 @@
           saveLoading.value = false;
         };
 
-        // 查詢功能
         const fetchReportData = async () => {
           try {
             const res = await fetch(GAS_URL, { method: "POST", body: JSON.stringify({ action: "getReport", year: reportYear.value }) });
             const result = await res.json();
             if (result.status === "success") yearlyReport.value = result.data;
-          } catch (e) { alert("報表載入失敗"); }
+          } catch (e) { console.error("報表讀取失敗"); }
         };
 
         const fetchMonthlyDetail = async () => {
@@ -319,7 +313,7 @@
           queryLoading.value = false;
         };
 
-        const formatCurrency = (val) => val ? val.toLocaleString() : '-';
+        const formatCurrency = (val) => (val !== undefined && val !== null) ? val.toLocaleString() : '-';
         const getClinicYearTotal = (months) => Object.values(months).reduce((a, b) => a + b, 0);
         const addItem = () => scannedData.items.push({ label: '手動輸入', value: 0 });
         const removeItem = (i) => scannedData.items.splice(i, 1);
@@ -327,21 +321,19 @@
         onMounted(() => { 
           fetchSettings(); 
           startCamera(); 
-          fetchReportData(); // 初始載入報表
+          fetchReportData();
         });
 
-        // 當切換到查詢分頁時刷新報表
         watch(activeTab, (newTab) => {
           if (newTab === 'view') fetchReportData();
-          if (newTab === 'scan') startCamera();
+          if (newTab === 'scan') setTimeout(startCamera, 300); // 延遲確保 DOM 已渲染
         });
 
         return { 
           activeTab, videoRef, loading, saveLoading, queryLoading, scannedData, 
-          calculateTotal, captureAndScan, addItem, removeItem, saveToGAS, 
-          done, clinicOptions, startCamera,
-          reportYear, yearlyReport, query, queryResult, fetchReportData, fetchMonthlyDetail,
-          formatCurrency, getClinicYearTotal
+          captureAndScan, addItem, removeItem, saveToGAS, 
+          done, clinicOptions, reportYear, yearlyReport, query, queryResult, 
+          fetchReportData, fetchMonthlyDetail, formatCurrency, getClinicYearTotal
         };
       }
     }).use(createVuetify()).mount('#app');
