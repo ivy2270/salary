@@ -180,6 +180,17 @@
                     </v-col>
                   </v-row>
                 </v-card-text>
+                <div v-if="queryResult.其他細項 && queryResult.其他細項.length > 0" class="mt-4">
+  <div class="text-overline text-orange-darken-3">技工/自費 明細</div>
+  <v-list density="compact" class="bg-orange-lighten-5 rounded">
+    <v-list-item v-for="(item, i) in queryResult.其他細項" :key="'other-'+i">
+      <div class="d-flex justify-space-between w-100">
+        <span class="text-caption">[{{ item.type }}] {{ item.label }}</span>
+        <span class="text-body-2 font-weight-bold">{{ item.value.toLocaleString() }}</span>
+      </div>
+    </v-list-item>
+  </v-list>
+</div>
               </v-card>
             </v-container>
           </v-window-item>
