@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>個人診所紀錄系統 v3.0</title>
+  <link href="https://cdn.jsdelivr.net/npm/vuetify@3.4.1/dist/vuetify.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/@mdi/font@7.3.67/css/materialdesignicons.min.css" rel="stylesheet">
+  <style>
+    body { background-color: #f0f2f5; font-family: sans-serif; }
+    #video-container { 
+      width: 100%; height: 250px; background: #000; 
+      border-radius: 12px; overflow: hidden; position: relative;
+    }
+    video { width: 100%; height: 100%; object-fit: contain; }
+    .scan-overlay {
+      position: absolute; top: 15%; left: 10%; width: 80%; height: 70%;
+      border: 2px dashed #4CAF50; box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.4);
+      pointer-events: none; border-radius: 8px; z-index: 1;
+    }
+    .item-card { 
+      background: #fff; margin-bottom: 12px; padding: 12px;
+      border-radius: 8px; border-left: 5px solid #455A64;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .item-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .total-box { background: #37474F !important; color: white !important; border-radius: 12px; }
+    .report-table th { background-color: #ECEFF1; font-weight: bold !important; white-space: nowrap; }
+    .sticky-col { position: sticky; left: 0; background: white; z-index: 2; border-right: 1px solid #ddd; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <v-app>
+      <v-main>
+        <v-tabs v-model="activeTab" grow bg-color="blue-grey-darken-4" theme="dark">
+          <v-tab value="scan"><v-icon start>mdi-camera</v-icon>掃描錄入</v-tab>
+          <v-tab value="view"><v-icon start>mdi-table</v-icon>年度查詢</v-tab>
+        </v-tabs>
+
+        <v-window v-model="activeTab">
+          <v-window-item value="scan">
+            <v-container>
+              <v-card class="mx-auto elevation-3" max-width="500" rounded="xl">
+                <v-card-text>
+                  <v-select 
+                    v-model="scannedData.category" 
+                    :items="['薪資單', '技工費', '自費清單']" 
+                    label="選擇項目類別" variant="solo-filled" rounded="lg"
+                    prepend-inner-icon="mdi-format-list-bulleted"
+                  ></v-select>
+
+                  <v-row dense>
+                    <v-col cols="7">
+                      <v-select v-model="scannedData.clinic" :items="clinicOptions" label="診所" variant="outlined" density="compact"></v-select>
+                    </v-col>
+                    <v-col cols="5">
+                      <v-text-field v-model="scannedData.date" type="month" label="月份" variant="outlined" density="compact"></v-text-field>
+                    </v-col>
+                  </v-row>
+
+                  <div id="video-container" class="my-3">
+                    <video ref="videoRef" autoplay playsinline muted></video>
+                    <div class="scan-overlay"></div>
+                  </div>
+
+                  <v-btn color="blue-grey-darken-2" block size="x-large" @click="captureAndScan" :loading="loading" rounded="lg">
+                    <v-icon start>mdi-line-scan</v-icon> 開始辨識
+                  </v-btn>
+                </v-card-text>
+
+                <v-divider v-if="scannedData.items.length > 0"></v-divider>
+
+                <v-card-text v-if="scannedData.items.length > 0">
+                  <div class="d-flex justify-space-between align-center mb-4">
+                    <span class="text-h6 font-weight-bold">辨識結果校正</span>
+                    <v-btn size="small" color="success" variant="tonal" @click="addItem">手動新增</v-btn>
+                  </div>
+
+                  <div v-for="(item, index) in scannedData.items" :key="index" class="item-card">
+                    <div class="item-header">
+                      <span class="text-caption text-grey">項目 #{{ index + 1 }}</span>
+                      <v-btn icon="mdi-delete" size="x-small" color="red-lighten-2" variant="text" @click="removeItem(index)"></v-btn>
+                    </div>
+                    <v-textarea v-model="item.label" auto-grow rows="1" label="內容描述" variant="filled" density="compact" hide-details class="mb-2"></v-textarea>
+                    <v-text-field v-model.number="item.value" type="number" label="金額" variant="outlined" density="compact" hide-details prepend-inner-icon="mdi-currency-usd"></v-text-field>
+                  </div>
+
+                  <v-card class="total-box pa-4 mt-6 elevation-2">
+                    <div class="text-caption">實領金額總計 (請核對並填寫)</div>
+                    <v-text-field 
+                      v-model.number="scannedData.manualTotal" 
+                      type="number" variant="plain" 
+                      class="text-h4 font-weight-bold" 
+                      prefix="$" 
+                      hide-details
+                    ></v-text-field>
+                  </v-card>
+
+                  <v-btn color="teal-darken-2" block size="x-large" class="mt-6" @click="saveToGAS" :loading="saveLoading" :disabled="!scannedData.clinic" rounded="xl">
+                    <v-icon start>mdi-cloud-upload</v-icon> 確認儲存至雲端
+                  </v-btn>
+                </v-card-text>
+              </v-card>
+            </v-container>
+          </v-window-item>
+
+          <v-window-item value="view">
+            <v-container>
+              <v-card class="mb-6 elevation-2" rounded="lg">
+                <v-toolbar color="grey-lighten-4" density="compact">
+                  <v-toolbar-title class="text-subtitle-1 font-weight-bold">年度薪資概覽</v-toolbar-title>
+                  <v-spacer></v-spacer>
+                  <v-select v-model="reportYear" :items="['2024','2025','2026','2027']" variant="plain" density="compact" hide-details style="max-width: 100px;"></v-select>
+                  <v-btn icon @click="fetchReportData"><v-icon>mdi-refresh</v-icon></v-btn>
+                </v-toolbar>
+                
+                <v-table density="compact" class="report-table">
+                  <thead>
+                    <tr>
+                      <th class="sticky-col">診所</th>
+                      <th v-for="m in 12" :key="m">{{ m }}月</th>
+                      <th>總計</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(months, clinic) in yearlyReport" :key="clinic">
+                      <td class="sticky-col font-weight-medium">{{ clinic }}</td>
+                      <td v-for="m in 12" :key="m" class="text-right">
+                        {{ formatCurrency(months[String(m).padStart(2,'0')]) }}
+                      </td>
+                      <td class="text-right font-weight-bold bg-blue-grey-lighten-5">
+                        {{ formatCurrency(getClinicYearTotal(months)) }}
+                      </td>
+                    </tr>
+                  </tbody>
+                </v-table>
+              </v-card>
+
+              <v-card class="elevation-2" rounded="lg">
+                <v-card-title class="text-subtitle-1 font-weight-bold">單月細項查詢</v-card-title>
+                <v-card-text>
+                  <v-row dense>
+                    <v-col cols="6">
+                      <v-select v-model="query.clinic" :items="clinicOptions" label="選擇診所" variant="outlined" density="compact"></v-select>
+                    </v-col>
+                    <v-col cols="6">
+                      <v-text-field v-model="query.date" type="month" label="選擇月份" variant="outlined" density="compact"></v-text-field>
+                    </v-col>
+                  </v-row>
+                  <v-btn block color="indigo-darken-1" @click="fetchMonthlyDetail" :loading="queryLoading">執行查詢</v-btn>
+                </v-card-text>
+
+                <v-divider v-if="queryResult"></v-divider>
+                
+                <v-card-text v-if="queryResult">
+                  <div class="mb-4">
+                    <div class="text-overline text-primary">薪資明細</div>
+                    <v-list density="compact" class="bg-grey-lighten-4 rounded">
+                      <v-list-item v-for="(item, i) in queryResult.薪資單" :key="i">
+                        <div class="d-flex justify-space-between w-100">
+                          <span class="text-body-2">{{ item.label }}</span>
+                          <span :class="item.value < 0 ? 'text-red' : 'text-green'">{{ item.value.toLocaleString() }}</span>
+                        </div>
+                      </v-list-item>
+                    </v-list>
+                  </div>
+                  <v-row dense>
+                    <v-col cols="6">
+                      <div class="pa-3 bg-teal-lighten-5 rounded text-center">
+                        <div class="text-caption">技工費總額</div>
+                        <div class="text-h6">${{ queryResult.技工費.toLocaleString() }}</div>
+                      </div>
+                    </v-col>
+                    <v-col cols="6">
+                      <div class="pa-3 bg-orange-lighten-5 rounded text-center">
+                        <div class="text-caption">自費加總</div>
+                        <div class="text-h6">${{ queryResult.自費清單.toLocaleString() }}</div>
+                      </div>
+                    </v-col>
+                  </v-row>
+                </v-card-text>
+              </v-card>
+            </v-container>
+          </v-window-item>
+        </v-window>
+      </v-main>
+
+      <v-snackbar v-model="done" color="success" location="top">操作成功！已存入雲端</v-snackbar>
+    </v-app>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/vue@3.3.11/dist/vue.global.prod.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vuetify@3.4.1/dist/vuetify.min.js"></script>
+
+  <script>
+    const { createApp, ref, reactive, computed, onMounted, watch } = Vue;
+    const { createVuetify } = Vuetify;
+
+    createApp({
+      setup() {
+        const GAS_URL = "https://script.google.com/macros/s/AKfycbz-XyeQ43Eq1DnCCRQ7HHpFuZy6jltDxVHDuVLuwrOeQoTlp1uuwnmKf-wNLzNwjBCd/exec"; 
+        const activeTab = ref('scan');
+        const videoRef = ref(null);
+        const loading = ref(false);
+        const saveLoading = ref(false);
+        const queryLoading = ref(false);
+        const done = ref(false);
+        
+        const clinicOptions = ref([]);
+        const scannedData = reactive({ 
+          category: '薪資單', 
+          date: new Date().toISOString().substr(0, 7), 
+          clinic: '', 
+          items: [],
+          manualTotal: 0
+        });
+
+        // 報表相關
+        const reportYear = ref(new Date().getFullYear().toString());
+        const yearlyReport = ref({});
+        const query = reactive({ clinic: '', date: new Date().toISOString().substr(0, 7) });
+        const queryResult = ref(null);
+
+        const calculateTotal = computed(() => scannedData.items.reduce((sum, item) => sum + (Number(item.value) || 0), 0));
+
+        // 當自動計算變動時，若為 0 則更新 manualTotal (僅作為初次引導)
+        watch(calculateTotal, (newVal) => {
+          if (scannedData.manualTotal === 0) scannedData.manualTotal = newVal;
+        });
+
+        const fetchSettings = async () => {
+          try {
+            const res = await fetch(GAS_URL, { method: "POST", body: JSON.stringify({ action: "getSettings" }) });
+            const result = await res.json();
+            if (result.status === "success") {
+              clinicOptions.value = result.clinics;
+              if (clinicOptions.value.length > 0) {
+                scannedData.clinic = clinicOptions.value[0];
+                query.clinic = clinicOptions.value[0];
+              }
+            }
+          } catch (e) { console.error("設定載入失敗"); }
+        };
+
+        const startCamera = async () => {
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+            if (videoRef.value) videoRef.value.srcObject = stream;
+          } catch (e) { alert("鏡頭啟動失敗"); }
+        };
+
+        const captureAndScan = async () => {
+          loading.value = true;
+          const canvas = document.createElement('canvas');
+          canvas.width = videoRef.value.videoWidth;
+          canvas.height = videoRef.value.videoHeight;
+          canvas.getContext('2d').drawImage(videoRef.value, 0, 0);
+          const base = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+
+          try {
+            const res = await fetch(GAS_URL, { 
+              method: "POST", 
+              body: JSON.stringify({ action: "scan", image: base, category: scannedData.category }) 
+            });
+            const result = await res.json();
+            if (result.status === "success") {
+              scannedData.items = [...scannedData.items, ...result.data.items];
+            } else { alert("辨識出錯：" + result.message); }
+          } catch (e) { alert("連線失敗"); }
+          loading.value = false;
+        };
+
+        const saveToGAS = async () => {
+          saveLoading.value = true;
+          // 將手動輸入的總額覆蓋進 payload (由 GAS 存入總計欄位)
+          const payload = { ...scannedData, items: scannedData.items };
+          payload.total = scannedData.manualTotal; 
+
+          try {
+            const res = await fetch(GAS_URL, { method: "POST", body: JSON.stringify({ action: "save", payload: payload }) });
+            const result = await res.json();
+            if (result.status === "success") {
+              done.value = true;
+              scannedData.items = [];
+              scannedData.manualTotal = 0;
+            }
+          } catch (e) { alert("儲存失敗"); }
+          saveLoading.value = false;
+        };
+
+        // 查詢功能
+        const fetchReportData = async () => {
+          try {
+            const res = await fetch(GAS_URL, { method: "POST", body: JSON.stringify({ action: "getReport", year: reportYear.value }) });
+            const result = await res.json();
+            if (result.status === "success") yearlyReport.value = result.data;
+          } catch (e) { alert("報表載入失敗"); }
+        };
+
+        const fetchMonthlyDetail = async () => {
+          queryLoading.value = true;
+          try {
+            const res = await fetch(GAS_URL, { method: "POST", body: JSON.stringify({ action: "getMonthlyDetail", date: query.date, clinic: query.clinic }) });
+            const result = await res.json();
+            if (result.status === "success") queryResult.value = result.data;
+          } catch (e) { alert("查詢失敗"); }
+          queryLoading.value = false;
+        };
+
+        const formatCurrency = (val) => val ? val.toLocaleString() : '-';
+        const getClinicYearTotal = (months) => Object.values(months).reduce((a, b) => a + b, 0);
+        const addItem = () => scannedData.items.push({ label: '手動輸入', value: 0 });
+        const removeItem = (i) => scannedData.items.splice(i, 1);
+
+        onMounted(() => { 
+          fetchSettings(); 
+          startCamera(); 
+          fetchReportData(); // 初始載入報表
+        });
+
+        // 當切換到查詢分頁時刷新報表
+        watch(activeTab, (newTab) => {
+          if (newTab === 'view') fetchReportData();
+          if (newTab === 'scan') startCamera();
+        });
+
+        return { 
+          activeTab, videoRef, loading, saveLoading, queryLoading, scannedData, 
+          calculateTotal, captureAndScan, addItem, removeItem, saveToGAS, 
+          done, clinicOptions, startCamera,
+          reportYear, yearlyReport, query, queryResult, fetchReportData, fetchMonthlyDetail,
+          formatCurrency, getClinicYearTotal
+        };
+      }
+    }).use(createVuetify()).mount('#app');
+  </script>
+</body>
+</html>
