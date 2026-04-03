@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>個人診所紀錄系統 v3.5</title>
+  <title>個人診所紀錄系統 v4.0</title>
   <link href="https://cdn.jsdelivr.net/npm/vuetify@3.4.1/dist/vuetify.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/@mdi/font@7.3.67/css/materialdesignicons.min.css" rel="stylesheet">
   <style>
-    body { background-color: #f0f2f5; font-family: sans-serif; }
+    body { background-color: #f4f7f6; font-family: 'Roboto', sans-serif; }
     #video-container { 
       width: 100%; height: 250px; background: #000; 
       border-radius: 12px; overflow: hidden; position: relative;
@@ -23,8 +23,7 @@
       border-radius: 8px; border-left: 5px solid #455A64;
       box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
-    .item-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-    .total-box { background: #37474F !important; color: white !important; border-radius: 12px; }
+    .total-box { background: #263238 !important; color: white !important; border-radius: 12px; }
     .report-table th { background-color: #ECEFF1; font-weight: bold !important; white-space: nowrap; }
     .sticky-col { position: sticky; left: 0; background: white; z-index: 2; border-right: 1px solid #ddd; }
   </style>
@@ -78,16 +77,12 @@
                   </div>
 
                   <div v-for="(item, index) in scannedData.items" :key="index" class="item-card">
-                    <div class="item-header">
-                      <span class="text-caption text-grey">項目 #{{ index + 1 }}</span>
-                      <v-btn icon="mdi-delete" size="x-small" color="red-lighten-2" variant="text" @click="removeItem(index)"></v-btn>
-                    </div>
                     <v-textarea v-model="item.label" auto-grow rows="1" label="內容描述" variant="filled" density="compact" hide-details class="mb-2"></v-textarea>
                     <v-text-field v-model.number="item.value" type="number" label="金額" variant="outlined" density="compact" hide-details prepend-inner-icon="mdi-currency-usd"></v-text-field>
                   </div>
 
                   <v-card class="total-box pa-4 mt-6 elevation-2">
-                    <div class="text-caption">實領金額總計 (請核對並填寫)</div>
+                    <div class="text-caption">實領金額總計 (掃描後請手動核對)</div>
                     <v-text-field 
                       v-model.number="scannedData.manualTotal" 
                       type="number" variant="plain" 
@@ -109,9 +104,9 @@
             <v-container>
               <v-card class="mb-6 elevation-2" rounded="lg">
                 <v-toolbar color="grey-lighten-4" density="compact">
-                  <v-toolbar-title class="text-subtitle-1 font-weight-bold">年度薪資概覽</v-toolbar-title>
+                  <v-toolbar-title class="text-subtitle-1 font-weight-bold">年度盈收概覽</v-toolbar-title>
                   <v-spacer></v-spacer>
-                  <v-select v-model="reportYear" :items="['2024','2025','2026','2027']" variant="plain" density="compact" hide-details style="max-width: 100px;"></v-select>
+                  <v-select v-model="reportYear" :items="availableYears" variant="plain" density="compact" hide-details style="max-width: 120px;"></v-select>
                   <v-btn icon @click="fetchReportData"><v-icon>mdi-refresh</v-icon></v-btn>
                 </v-toolbar>
                 
@@ -119,7 +114,7 @@
                   <thead>
                     <tr>
                       <th class="sticky-col">診所</th>
-                      <th v-for="m in 12" :key="m">{{ m }}月</th>
+                      <th v-for="m in 12" :key="m" class="text-center">{{ m }}月</th>
                       <th>總計</th>
                     </tr>
                   </thead>
@@ -154,43 +149,26 @@
                 <v-divider v-if="queryResult"></v-divider>
                 
                 <v-card-text v-if="queryResult">
-                  <div class="mb-4" v-if="queryResult.薪資單 && queryResult.薪資單.length > 0">
-                    <div class="text-overline text-primary">薪資明細</div>
-                    <v-list density="compact" class="bg-grey-lighten-4 rounded">
-                      <v-list-item v-for="(item, i) in queryResult.薪資單" :key="i">
+                  <div v-for="cat in ['薪資單', '技工費', '自費清單']" :key="cat" class="mb-4">
+                    <div class="text-overline font-weight-bold" :class="cat === '薪資單' ? 'text-primary' : (cat === '技工費' ? 'text-teal' : 'text-orange')">
+                      {{ cat }} 明細
+                    </div>
+                    <v-list density="compact" class="bg-grey-lighten-4 rounded" v-if="queryResult[cat] && queryResult[cat].length > 0">
+                      <v-list-item v-for="(item, i) in queryResult[cat]" :key="i">
                         <div class="d-flex justify-space-between w-100">
                           <span class="text-body-2">{{ item.label }}</span>
-                          <span :class="Number(item.value) < 0 ? 'text-red' : 'text-green'">{{ Number(item.value).toLocaleString() }}</span>
+                          <span class="font-weight-medium">{{ formatCurrency(item.value) }}</span>
+                        </div>
+                      </v-list-item>
+                      <v-divider></v-divider>
+                      <v-list-item>
+                        <div class="d-flex justify-space-between w-100 font-weight-bold">
+                          <span>{{ cat }} 前端計算小計</span>
+                          <span class="text-decoration-underline">$ {{ calculateCatTotal(queryResult[cat]).toLocaleString() }}</span>
                         </div>
                       </v-list-item>
                     </v-list>
-                  </div>
-
-                  <v-row dense class="mb-4">
-                    <v-col cols="6">
-                      <div class="pa-3 bg-teal-lighten-5 rounded text-center">
-                        <div class="text-caption">技工費總額</div>
-                        <div class="text-h6">${{ (queryResult.技工費 || 0).toLocaleString() }}</div>
-                      </div>
-                    </v-col>
-                    <v-col cols="6">
-                      <div class="pa-3 bg-orange-lighten-5 rounded text-center">
-                        <div class="text-caption">自費加總</div>
-                        <div class="text-h6">${{ (queryResult.自費清單 || 0).toLocaleString() }}</div>
-                      </div>
-                    </v-col>
-                  </v-row>
-
-                  <div v-if="queryResult.其他細項 && queryResult.其他細項.length > 0">
-                    <div class="text-overline text-orange-darken-3">技工/自費 明細</div>
-                    <v-list density="compact" class="bg-orange-lighten-5 rounded">
-                      <v-list-item v-for="(item, i) in queryResult.其他細項" :key="'other-'+i">
-                        <div class="d-flex justify-space-between w-100">
-                          <span class="text-caption text-truncate mr-2">[{{ item.type }}] {{ item.label }}</span>
-                          <span class="text-body-2 font-weight-bold">{{ Number(item.value).toLocaleString() }}</span>
-                        </div>
-                      </v-list-item>
-                    </v-list>
+                    <div v-else class="text-caption text-grey pa-2">無資料</div>
                   </div>
                 </v-card-text>
               </v-card>
@@ -198,7 +176,6 @@
           </v-window-item>
         </v-window>
       </v-main>
-
       <v-snackbar v-model="done" color="success" location="top">操作成功！已存入雲端</v-snackbar>
     </v-app>
   </div>
@@ -207,7 +184,7 @@
   <script src="https://cdn.jsdelivr.net/npm/vuetify@3.4.1/dist/vuetify.min.js"></script>
 
   <script>
-    const { createApp, ref, reactive, computed, onMounted, watch } = Vue;
+    const { createApp, ref, reactive, onMounted, watch } = Vue;
     const { createVuetify } = Vuetify;
 
     createApp({
@@ -221,6 +198,7 @@
         const done = ref(false);
         
         const clinicOptions = ref([]);
+        const availableYears = ref([]);
         const scannedData = reactive({ 
           category: '薪資單', 
           date: new Date().toISOString().substr(0, 7), 
@@ -240,12 +218,14 @@
             const result = await res.json();
             if (result.status === "success") {
               clinicOptions.value = result.clinics;
+              availableYears.value = result.years;
               if (clinicOptions.value.length > 0) {
                 scannedData.clinic = clinicOptions.value[0];
                 query.clinic = clinicOptions.value[0];
               }
+              if (availableYears.value.length > 0) reportYear.value = availableYears.value[0];
             }
-          } catch (e) { console.error("設定失敗"); }
+          } catch (e) { console.error("設定讀取失敗"); }
         };
 
         const startCamera = async () => {
@@ -272,10 +252,10 @@
             const result = await res.json();
             if (result.status === "success") {
               scannedData.items = [...scannedData.items, ...result.data.items];
-              // 自動更新手動總額初值
+              // 薪資單自動更新手動總額初值供修改
               const sum = scannedData.items.reduce((s, i) => s + (Number(i.value) || 0), 0);
               if (scannedData.manualTotal === 0) scannedData.manualTotal = sum;
-            } else { alert("辨識錯誤"); }
+            } else { alert("辨識錯誤: " + result.message); }
           } catch (e) { alert("辨識連線失敗"); }
           loading.value = false;
         };
@@ -313,10 +293,14 @@
           queryLoading.value = false;
         };
 
+        const calculateCatTotal = (items) => {
+          if (!items) return 0;
+          return items.reduce((sum, i) => sum + (Number(i.value) || 0), 0);
+        };
+
         const formatCurrency = (val) => (val !== undefined && val !== null) ? val.toLocaleString() : '-';
         const getClinicYearTotal = (months) => Object.values(months).reduce((a, b) => a + b, 0);
         const addItem = () => scannedData.items.push({ label: '手動輸入', value: 0 });
-        const removeItem = (i) => scannedData.items.splice(i, 1);
 
         onMounted(() => { 
           fetchSettings(); 
@@ -326,14 +310,14 @@
 
         watch(activeTab, (newTab) => {
           if (newTab === 'view') fetchReportData();
-          if (newTab === 'scan') setTimeout(startCamera, 300); // 延遲確保 DOM 已渲染
+          if (newTab === 'scan') setTimeout(startCamera, 300);
         });
 
         return { 
           activeTab, videoRef, loading, saveLoading, queryLoading, scannedData, 
-          captureAndScan, addItem, removeItem, saveToGAS, 
-          done, clinicOptions, reportYear, yearlyReport, query, queryResult, 
-          fetchReportData, fetchMonthlyDetail, formatCurrency, getClinicYearTotal
+          captureAndScan, addItem, saveToGAS, 
+          done, clinicOptions, reportYear, availableYears, yearlyReport, query, queryResult, 
+          fetchReportData, fetchMonthlyDetail, formatCurrency, getClinicYearTotal, calculateCatTotal
         };
       }
     }).use(createVuetify()).mount('#app');
