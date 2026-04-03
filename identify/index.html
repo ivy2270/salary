@@ -7,44 +7,70 @@
   <link href="https://cdn.jsdelivr.net/npm/vuetify@3.4.1/dist/vuetify.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/@mdi/font@7.3.67/css/materialdesignicons.min.css" rel="stylesheet">
   <style>
-    #video-container { width: 100%; max-width: 500px; height: 180px; margin: auto; background: #000; border-radius: 8px; overflow: hidden; position: relative; }
-    video { width: 100%; height: 100%; object-fit: cover; }
-    .item-row { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; padding: 4px; border-bottom: 1px solid #f5f5f5; }
+    #video-container { 
+      width: 100%; 
+      max-width: 500px; 
+      height: 350px; 
+      margin: auto; 
+      background: #000; 
+      border-radius: 12px; 
+      overflow: hidden; 
+      position: relative; 
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+    video { width: 100%; height: 100%; object-fit: contain; }
+    .scan-overlay {
+      position: absolute;
+      top: 15%;
+      left: 10%;
+      width: 80%;
+      height: 70%;
+      border: 2px dashed #4CAF50;
+      box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.4);
+      pointer-events: none;
+      border-radius: 8px;
+    }
+    .item-row { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; padding: 6px; border-bottom: 1px solid #e0e0e0; background: white; border-radius: 4px; }
+    .total-box { border-radius: 12px; background: #37474F !important; color: white !important; }
   </style>
 </head>
 <body>
   <div id="app">
     <v-app>
-      <v-main class="bg-blue-grey-lighten-5">
+      <v-main class="bg-grey-lighten-3">
         <v-container>
-          <v-card class="mx-auto" max-width="600">
-            <v-toolbar color="blue-grey-darken-3" title="診所薪資掃描系統"></v-toolbar>
+          <v-card class="mx-auto elevation-4" max-width="600" rounded="xl">
+            <v-toolbar color="blue-grey-darken-4" title="薪資單智能辨識" theme="dark">
+              <v-spacer></v-spacer>
+              <v-btn icon @click="startCamera"><v-icon>mdi-camera-refresh</v-icon></v-btn>
+            </v-toolbar>
 
             <v-card-text>
               <v-row dense>
                 <v-col cols="6">
-                  <v-select v-model="scannedData.clinic" :items="clinicOptions" label="所屬診所" variant="outlined" density="compact" prepend-inner-icon="mdi-hospital-building"></v-select>
+                  <v-select v-model="scannedData.clinic" :items="clinicOptions" label="選擇診所" variant="solo" density="comfortable" prepend-inner-icon="mdi-hospital-building"></v-select>
                 </v-col>
                 <v-col cols="6">
-                  <v-text-field v-model="scannedData.date" type="month" label="薪資月份" variant="outlined" density="compact"></v-text-field>
+                  <v-text-field v-model="scannedData.date" type="month" label="薪資月份" variant="solo" density="comfortable"></v-text-field>
                 </v-col>
               </v-row>
 
-              <div id="video-container" class="my-2">
+              <div id="video-container" class="my-4">
                 <video ref="videoRef" autoplay playsinline muted></video>
+                <div class="scan-overlay"></div>
               </div>
 
-              <v-btn color="blue-grey-darken-2" block size="large" @click="captureAndScan" :loading="loading">
-                <v-icon start>mdi-camera-plus</v-icon> 掃描單據項目
+              <v-btn color="teal-darken-1" block size="x-large" @click="captureAndScan" :loading="loading" rounded="lg" elevation="2">
+                <v-icon start>mdi-line-scan</v-icon> 拍攝並辨識
               </v-btn>
             </v-card-text>
 
             <v-divider></v-divider>
 
             <v-card-text v-if="scannedData.items.length > 0">
-              <div class="d-flex justify-space-between align-center mb-3">
-                <span class="text-subtitle-1 font-weight-bold">辨識結果 (可調整順序與增刪)</span>
-                <v-btn size="x-small" color="success" icon="mdi-plus" @click="addItem"></v-btn>
+              <div class="d-flex justify-space-between align-center mb-4">
+                <span class="text-h6 font-weight-bold color-blue-grey">明細校正</span>
+                <v-btn size="small" color="teal" variant="tonal" prepend-icon="mdi-plus" @click="addItem">新增</v-btn>
               </div>
 
               <div v-for="(item, index) in scannedData.items" :key="index" class="item-row">
@@ -52,106 +78,25 @@
                   <v-btn icon="mdi-chevron-up" variant="plain" size="x-small" @click="moveItem(index, -1)" :disabled="index === 0"></v-btn>
                   <v-btn icon="mdi-chevron-down" variant="plain" size="x-small" @click="moveItem(index, 1)" :disabled="index === scannedData.items.length - 1"></v-btn>
                 </div>
-                <v-text-field v-model="item.label" density="compact" hide-details flat variant="solo" class="flex-grow-1"></v-text-field>
-                <v-text-field v-model.number="item.value" type="number" density="compact" hide-details flat variant="solo" style="width: 90px;"></v-text-field>
-                <v-btn icon="mdi-close-circle" variant="text" color="red-lighten-2" size="small" @click="removeItem(index)"></v-btn>
+                <v-text-field v-model="item.label" density="compact" hide-details flat variant="solo-filled" class="flex-grow-1"></v-text-field>
+                <v-text-field v-model.number="item.value" type="number" density="compact" hide-details flat variant="solo-filled" style="width: 100px;"></v-text-field>
+                <v-btn icon="mdi-delete-outline" variant="text" color="red-lighten-1" size="small" @click="removeItem(index)"></v-btn>
               </div>
 
-              <v-alert color="blue-grey-darken-3" theme="dark" class="mt-4 text-right">
-                <div class="text-caption">本月實領金額</div>
-                <div class="text-h4">${{ calculateTotal.toLocaleString() }}</div>
-              </v-alert>
+              <v-card class="total-box mt-6 pa-4 text-right elevation-2">
+                <div class="text-caption text-grey-lighten-1">本月實領金額總計</div>
+                <div class="text-h4 font-weight-black">${{ calculateTotal.toLocaleString() }}</div>
+              </v-card>
 
-              <v-btn color="teal-darken-2" block size="x-large" class="mt-4" @click="saveToGAS" :loading="saveLoading" :disabled="!scannedData.clinic">
-                確認儲存至 Google Sheet
+              <v-btn color="indigo-darken-2" block size="x-large" class="mt-6" @click="saveToGAS" :loading="saveLoading" rounded="lg" :disabled="!scannedData.clinic">
+                <v-icon start>mdi-cloud-check</v-icon> 確認並上傳雲端
               </v-btn>
             </v-card-text>
           </v-card>
         </v-container>
       </v-main>
-      <v-snackbar v-model="done" color="success">已成功存入雲端試算表</v-snackbar>
+      <v-snackbar v-model="done" color="success" location="top" rounded="pill">
+        🎉 薪資資料已成功存檔！
+      </v-snackbar>
     </v-app>
   </div>
-
-  <script src="https://cdn.jsdelivr.net/npm/vue@3.3.11/dist/vue.global.prod.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/vuetify@3.4.1/dist/vuetify.min.js"></script>
-
-  <script>
-    const { createApp, ref, reactive, computed, onMounted } = Vue;
-    const { createVuetify } = Vuetify;
-
-    createApp({
-      setup() {
-        const GAS_URL = "https://script.google.com/macros/s/AKfycbzKeR_Hx0KiIcYcHvlZpjG9HjiO_KxEVQajHBDV0AsrWwxdhGG6cDNc2ys2nX99R1X-/exec"; 
-        const videoRef = ref(null);
-        const loading = ref(false);
-        const saveLoading = ref(false);
-        const done = ref(false);
-        const clinicOptions = ref([]); // 存放從試算表抓取的診所
-        const scannedData = reactive({ date: new Date().toISOString().substr(0, 7), clinic: '', items: [] });
-
-        const calculateTotal = computed(() => scannedData.items.reduce((sum, item) => sum + (Number(item.value) || 0), 0));
-
-        // 初始化：抓取診所清單
-        const fetchSettings = async () => {
-          try {
-            const res = await fetch(GAS_URL, { method: "POST", body: JSON.stringify({ action: "getSettings" }) });
-            const result = await res.json();
-            if (result.status === "success") clinicOptions.value = result.clinics;
-          } catch (e) { console.error("無法載入診所設定"); }
-        };
-
-        const startCamera = async () => {
-          try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-            videoRef.value.srcObject = stream;
-          } catch (e) { alert("請確保使用 HTTPS 並授權鏡頭權限"); }
-        };
-
-        const captureAndScan = async () => {
-          loading.value = true;
-          const canvas = document.createElement('canvas');
-          canvas.width = videoRef.value.videoWidth; canvas.height = videoRef.value.videoHeight;
-          canvas.getContext('2d').drawImage(videoRef.value, 0, 0);
-          const base = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
-
-          try {
-            const res = await fetch(GAS_URL, { method: "POST", body: JSON.stringify({ action: "scan", image: base }) });
-            const result = await res.json();
-            if (result.status === "success") {
-              scannedData.date = result.data.date;
-              // 將新掃描的項目累加到現有清單中
-              scannedData.items = [...scannedData.items, ...result.data.items];
-            }
-          } catch (e) { alert("辨識發生錯誤"); }
-          loading.value = false;
-        };
-
-        const addItem = () => scannedData.items.push({ label: '手動項目', value: 0 });
-        const removeItem = (i) => scannedData.items.splice(i, 1);
-        const moveItem = (i, dir) => {
-          const target = i + dir;
-          const temp = scannedData.items[i];
-          scannedData.items[i] = scannedData.items[target];
-          scannedData.items[target] = temp;
-        };
-
-        const saveToGAS = async () => {
-          if (!scannedData.clinic) return alert("請先選擇診所");
-          saveLoading.value = true;
-          try {
-            await fetch(GAS_URL, { method: "POST", body: JSON.stringify({ action: "save", payload: scannedData }) });
-            done.value = true;
-            scannedData.items = []; // 存完清空，保留月份與診所方便下一張掃描
-          } catch (e) { alert("儲存失敗"); }
-          saveLoading.value = false;
-        };
-
-        onMounted(() => { fetchSettings(); startCamera(); });
-
-        return { videoRef, loading, saveLoading, scannedData, calculateTotal, captureAndScan, addItem, removeItem, moveItem, saveToGAS, done, clinicOptions };
-      }
-    }).use(createVuetify()).mount('#app');
-  </script>
-</body>
-</html>
