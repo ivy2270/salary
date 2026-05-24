@@ -68,25 +68,52 @@
                     :items="['薪資單', '技工費', '自費清單']" 
                     label="選擇項目類別" variant="solo" rounded="lg" bg-color="#E9F2F3"
                     prepend-inner-icon="mdi-tag-outline"
+                    hide-details
+                    class="mb-3"
+                  ></v-select>
+
+                  <v-select 
+                    v-model="selectedModel" 
+                    :items="modelOptions" 
+                    item-title="title"
+                    item-value="value"
+                    label="選擇 AI 模型" variant="solo" rounded="lg" bg-color="#E9F2F3"
+                    prepend-inner-icon="mdi-brain"
+                    hide-details
+                    class="mb-3"
                   ></v-select>
 
                   <v-row dense>
-                    <v-col cols="7">
+                    <v-col cols="6">
                       <v-select v-model="scannedData.clinic" :items="clinicOptions" label="診所" variant="outlined" density="compact" color="#79B7BE"></v-select>
                     </v-col>
-                    <v-col cols="5">
+                    <v-col cols="6">
                       <v-text-field v-model="scannedData.date" type="month" label="月份" variant="outlined" density="compact" color="#79B7BE"></v-text-field>
                     </v-col>
                   </v-row>
 
-                  <div id="video-container" class="my-3">
-                    <video ref="videoRef" autoplay playsinline muted></video>
-                    <div class="scan-overlay"></div>
+                  <div id="video-container" class="my-3 position-relative">
+                    <video v-show="isCameraActive" ref="videoRef" autoplay playsinline muted></video>
+                    <div v-if="isCameraActive && !isFrozen" class="scan-overlay"></div>
+
+                    <!-- 辨識定格遮罩 -->
+                    <div v-if="isFrozen" class="frozen-overlay d-flex flex-column align-center justify-center text-white" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.65); z-index: 2; border-radius: 16px;">
+                      <v-progress-circular indeterminate color="#EE964B" size="64" width="6" class="mb-3"></v-progress-circular>
+                      <span class="text-subtitle-1 font-weight-bold">AI 辨識中，請稍候...</span>
+                    </div>
+
+                    <!-- 點擊開啟相機遮罩 -->
+                    <div v-if="!isCameraActive" class="text-center w-100 h-100 d-flex flex-column align-center justify-center bg-grey-darken-4 text-white" style="position: absolute; top:0; left:0; border-radius: 16px; cursor: pointer; z-index: 3;" @click="startCamera">
+                      <v-icon size="48" color="#79B7BE">mdi-camera</v-icon>
+                      <div class="mt-2 text-subtitle-1 font-weight-bold">點擊開啟相機</div>
+                    </div>
                   </div>
 
-                  <v-btn color="#79B7BE" block size="x-large" @click="captureAndScan" :loading="loading" rounded="lg" class="text-white font-weight-bold">
-                    <v-icon start>mdi-eye-scan</v-icon> 開始辨識
-                  </v-btn>
+                  <div class="d-flex justify-center my-4">
+                    <v-btn color="#79B7BE" size="x-large" @click="captureAndScan" :loading="loading" :disabled="!isCameraActive || isFrozen" rounded="xl" class="text-white font-weight-bold px-8 elevation-4">
+                  開始辨識
+                    </v-btn>
+                  </div>
                 </v-card-text>
 
                 <v-divider v-if="scannedData.items.length > 0"></v-divider>
@@ -217,9 +244,8 @@
           </v-window-item>
         </v-window>
       </v-main>
-      <v-snackbar v-model="done" color="#79B7BE" location="top" vertical>
-        <div class="text-subtitle-1 pb-2">儲存成功！</div>
-        <p>資料已同步至 Google Sheet。</p>
+      <v-snackbar v-model="done" color="#79B7BE" location="top" :timeout="2000">
+        儲存成功！資料已同步至 Google Sheet。
       </v-snackbar>
     </v-app>
   </div>
@@ -240,6 +266,17 @@
         const saveLoading = ref(false);
         const queryLoading = ref(false);
         const done = ref(false);
+        
+        const isCameraActive = ref(false);
+        const isFrozen = ref(false);
+        const selectedModel = ref('models/gemini-2.5-flash');
+        const modelOptions = ref([
+          { title: 'Gemini 2.5 Flash (快且準，推薦)', value: 'models/gemini-2.5-flash' },
+          { title: 'Gemini 2.5 Pro (複雜/模糊圖片)', value: 'models/gemini-2.5-pro' },
+          { title: 'Gemini 1.5 Flash (舊版 Flash)', value: 'models/gemini-1.5-flash' },
+          { title: 'Gemini 1.5 Pro (舊版 Pro)', value: 'models/gemini-1.5-pro' }
+        ]);
+        let cameraStream = null;
         
         const clinicOptions = ref([]);
         const availableYears = ref([]);
@@ -275,33 +312,94 @@
 
         const startCamera = async () => {
           try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-            if (videoRef.value) videoRef.value.srcObject = stream;
-          } catch (e) { console.log("鏡頭啟動中..."); }
+            stopCamera();
+            const constraints = {
+              video: {
+                facingMode: "environment",
+                width: { ideal: 1920 },
+                height: { ideal: 1080 }
+              }
+            };
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            cameraStream = stream;
+            if (videoRef.value) {
+              videoRef.value.srcObject = stream;
+            }
+            isCameraActive.value = true;
+
+            // 嘗試啟用連續自動對焦 (部分 Android Chrome 支援)
+            try {
+              const track = stream.getVideoTracks()[0];
+              if (track && typeof track.getCapabilities === 'function') {
+                const capabilities = track.getCapabilities();
+                const advanced = {};
+                if (capabilities.focusMode && capabilities.focusMode.includes('continuous')) {
+                  advanced.focusMode = 'continuous';
+                }
+                if (Object.keys(advanced).length > 0) {
+                  await track.applyConstraints({ advanced: [advanced] });
+                }
+              }
+            } catch (err) {
+              console.log("無法套用自動對焦設定", err);
+            }
+          } catch (e) {
+            console.error("鏡頭啟動失敗", e);
+            alert("無法開啟鏡頭，請確認已授予相機使用權限。");
+          }
+        };
+
+        const stopCamera = () => {
+          if (cameraStream) {
+            cameraStream.getTracks().forEach(track => track.stop());
+            cameraStream = null;
+          }
+          if (videoRef.value) {
+            videoRef.value.srcObject = null;
+          }
+          isCameraActive.value = false;
         };
 
         const captureAndScan = async () => {
-          if (!videoRef.value) return;
+          if (!videoRef.value || !isCameraActive.value) return;
           loading.value = true;
+          isFrozen.value = true;
+          videoRef.value.pause(); // 讓畫面定格
+
           const canvas = document.createElement('canvas');
-          const maxWidth = 1024;
-          const scale = maxWidth / videoRef.value.videoWidth;
+          const videoWidth = videoRef.value.videoWidth || 1920;
+          const videoHeight = videoRef.value.videoHeight || 1080;
+          // 解析度限制在 1600 像素寬以平衡清晰度與上傳速度
+          const maxWidth = Math.min(videoWidth, 1600);
+          const scale = maxWidth / videoWidth;
           canvas.width = maxWidth;
-          canvas.height = videoRef.value.videoHeight * scale;
+          canvas.height = videoHeight * scale;
           canvas.getContext('2d').drawImage(videoRef.value, 0, 0, canvas.width, canvas.height);
-          const base = canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
+          const base = canvas.toDataURL('image/jpeg', 0.85).split(',')[1]; // 提升品質到 0.85 以加強辨識度
 
           try {
             const res = await fetch(GAS_URL, { 
               method: "POST", 
-              body: JSON.stringify({ action: "scan", image: base, category: scannedData.category }) 
+              body: JSON.stringify({ 
+                action: "scan", 
+                image: base, 
+                category: scannedData.category,
+                model: selectedModel.value
+              }) 
             });
             const result = await res.json();
             if (result.status === "success") {
               scannedData.items = [...scannedData.items, ...result.data.items];
             } else { alert("辨識錯誤: " + result.message); }
           } catch (e) { alert("辨識連線失敗"); }
+
           loading.value = false;
+          isFrozen.value = false;
+          if (videoRef.value) {
+            try {
+              await videoRef.value.play(); // 恢復相機播放
+            } catch (err) { console.error("恢復相機播放失敗", err); }
+          }
         };
 
         const saveToGAS = async () => {
@@ -359,15 +457,18 @@
         };
         const getGrandTotal = () => Object.values(yearlyReport.value).reduce((sum, months) => sum + getClinicYearTotal(months), 0);
 
-        onMounted(() => { fetchSettings(); startCamera(); });
+        onMounted(() => { fetchSettings(); });
 
         watch(activeTab, (newTab) => {
-          if (newTab === 'view') fetchReportData();
-          if (newTab === 'scan') setTimeout(startCamera, 300);
+          if (newTab === 'view') {
+            fetchReportData();
+            stopCamera();
+          }
         });
 
         return { 
           activeTab, videoRef, loading, saveLoading, queryLoading, scannedData, 
+          isCameraActive, isFrozen, selectedModel, modelOptions, startCamera, stopCamera,
           captureAndScan, addItem, removeItem, moveItem, saveToGAS, 
           done, clinicOptions, reportYear, availableYears, yearlyReport, query, queryResult, 
           fetchReportData, fetchMonthlyDetail, formatCurrency, getClinicYearTotal, getMonthTotal, getGrandTotal
