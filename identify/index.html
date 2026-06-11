@@ -58,7 +58,10 @@
           <v-tab value="view"><v-icon start>mdi-chart-box</v-icon>年度查詢</v-tab>
         </v-tabs>
 
-        <v-window v-model="activeTab" touchless>
+        <v-window v-model="activeTab" touchless
+          @touchstart.passive="onTouchStart"
+          @touchend.passive="onTouchEnd"
+        >
           <v-window-item value="scan">
             <v-container>
               <v-card class="mx-auto elevation-4" max-width="500" rounded="xl">
@@ -420,6 +423,23 @@
           saveLoading.value = false;
         };
 
+        // 滑動切換頁籤：需明確水平滑動才觸發（角度 < 35°，距離 > 50px）
+        let touchStartX = 0, touchStartY = 0;
+        const onTouchStart = (e) => {
+          touchStartX = e.touches[0].clientX;
+          touchStartY = e.touches[0].clientY;
+        };
+        const onTouchEnd = (e) => {
+          const dx = e.changedTouches[0].clientX - touchStartX;
+          const dy = e.changedTouches[0].clientY - touchStartY;
+          const angle = Math.abs(Math.atan2(Math.abs(dy), Math.abs(dx)) * 180 / Math.PI);
+          if (Math.abs(dx) < 50 || angle > 35) return; // 距離不足或角度太偏垂直則忽略
+          const tabs = ['scan', 'view'];
+          const cur = tabs.indexOf(activeTab.value);
+          if (dx < 0 && cur < tabs.length - 1) activeTab.value = tabs[cur + 1];
+          if (dx > 0 && cur > 0) activeTab.value = tabs[cur - 1];
+        };
+
         const addItem = () => scannedData.items.push({ label: '新項目', value: 0 });
         const removeItem = (index) => scannedData.items.splice(index, 1);
         const moveItem = (index, step) => {
@@ -471,7 +491,8 @@
           isCameraActive, isFrozen, selectedModel, modelOptions, startCamera, stopCamera,
           captureAndScan, addItem, removeItem, moveItem, saveToGAS, 
           done, clinicOptions, reportYear, availableYears, yearlyReport, query, queryResult, 
-          fetchReportData, fetchMonthlyDetail, formatCurrency, getClinicYearTotal, getMonthTotal, getGrandTotal
+          fetchReportData, fetchMonthlyDetail, formatCurrency, getClinicYearTotal, getMonthTotal, getGrandTotal,
+          onTouchStart, onTouchEnd
         };
       }
     }).use(createVuetify()).mount('#app');
